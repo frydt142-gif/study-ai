@@ -510,20 +510,22 @@ function buildRenderableContainer(notes: StudyNotesData): HTMLElement {
 
   const container = document.createElement('div');
   container.id = 'temp-pdf-export-container';
-  // Position in visible coordinate space (top 0, left 0), but send behind via z-index
-  // html2canvas requires the element to have positive coordinates to calculate bounding rect correctly!
-  container.style.position = 'fixed';
+  
+  // Position in visible space for canvas capture
+  container.style.position = 'absolute';
   container.style.top = '0px';
   container.style.left = '0px';
-  container.style.width = '794px'; // Exactly A4 width in 96 DPI pixels (210mm)
+  container.style.width = '794px';
+  container.style.minHeight = '1123px';
   container.style.backgroundColor = '#ffffff';
   container.style.color = '#0f172a';
-  container.style.zIndex = '-9999';
+  container.style.zIndex = '9999';
+  container.style.visibility = 'visible';
   container.style.opacity = '1';
   container.style.pointerEvents = 'none';
   container.style.overflow = 'visible';
 
-  // Extract body content and style from fullHtml
+  // Extract body content and style elements from generated HTML
   const parser = new DOMParser();
   const doc = parser.parseFromString(fullHtml, 'text/html');
 
@@ -539,61 +541,66 @@ function buildRenderableContainer(notes: StudyNotesData): HTMLElement {
   return container;
 }
 
+
 /**
  * Directly downloads the study notes as a cleanly formatted .pdf file using html2pdf.js
  */
 export async function downloadStudyNotesPdfFile(notes: StudyNotesData): Promise<void> {
-  const container = buildRenderableContainer(notes);
-  document.body.appendChild(container);
-
-  // Wait for web fonts to complete loading so text is rendered correctly
-  if (document.fonts) {
-    try {
-      await document.fonts.ready;
-    } catch {
-      // Continue if font ready promise fails
-    }
-  }
-
-  // Allow DOM to settle and calculate layout heights
-  await new Promise(resolve => setTimeout(resolve, 350));
-
-  const fileName = `${sanitizeFileName(notes.lectureTitle || 'Lecture')}_Study_Notes.pdf`;
-
-  const opt = {
-    margin: [10, 10, 10, 10], // 10mm margins
-    filename: fileName,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      scrollY: 0,
-      scrollX: 0,
-      windowWidth: 794
-    },
-    jsPDF: {
-      unit: 'mm',
-      format: 'a4',
-      orientation: 'portrait' as const,
-      compress: true
-    },
-    pagebreak: {
-      mode: ['avoid-all', 'css', 'legacy'],
-      avoid: ['.avoid-break', '.card', 'section', 'table', 'tr']
-    }
-  };
+  let container: HTMLElement | null = null;
 
   try {
+    // 1. إنشاء الحاوية المجهزة وتحميلها في الـ DOM
+    container = buildRenderableContainer(notes);
+    document.body.appendChild(container);
+
+    // 2. انتظار تحميل الخطوط والصور لضمان عدم ظهور صفحات فارغة
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // 3. إعداد اسم الملف والمواصفات المطلوبة
+    const fileName = `${sanitizeFileName(notes.lectureTitle || 'study-notes')}-${Date.now()}.pdf`;
+
+    const opt = {
+      margin: 0,
+      filename: fileName,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 794,
+        height: container.scrollHeight,
+        windowHeight: Math.max(container.scrollHeight, window.innerHeight),
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait',
+        compress: true,
+      },
+      pagebreak: {
+        mode: ['css', 'legacy'],
+        avoid: ['.avoid-break', '.card', 'table', 'tr'],
+      },
+    };
+
+    // 4. استدعاء html2pdf والحفظ
     const worker = (html2pdf() as any).set(opt).from(container);
     await worker.save();
+  } catch (error) {
+    console.error('Failed to export PDF:', error);
   } finally {
-    if (document.body.contains(container)) {
+    // 5. التنظيف وإزالة العنصر المؤقت من الـ DOM
+    if (container && document.body.contains(container)) {
       document.body.removeChild(container);
     }
   }
 }
+
 
 /**
  * Native print trigger with full styling, perfect Arabic typography, and automatic print dialog.
