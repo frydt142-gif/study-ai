@@ -1,0 +1,6 @@
+{
+  "name": "Study AI",
+  "description": "AI study assistant for university, medical, and scientific students. Generates bilingual English & Arabic structured study notes with semantic visual diagrams from lecture files.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
